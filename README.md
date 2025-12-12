@@ -22,7 +22,15 @@ The data to be copied is as below:
 ## Running MIDAS with super-resolution
 
 ```bash
-python ~/MIDAS/FF_HEDM/v7/ff_MIDAS_sr.py -paramFN ps.txt -fileName data.edf.ge5 -nCPUs 40 -numFrameChunks 100 -preProcThresh 30 -doPeakSearch 0 -runSR 1 -srfac 8
+python ~/MIDAS/FF_HEDM/v7/ff_MIDAS_sr.py \
+    -paramFN ps.txt \
+    -fileName data.edf.ge5 \
+    -nCPUs 40 \
+    -numFrameChunks 100 \
+    -preProcThresh 30 \
+    -doPeakSearch 0 \
+    -runSR 1 \
+    -srfac 8
 ```
 
 NOTE: In the above execution, take a note of the following:
