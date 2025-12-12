@@ -9,7 +9,7 @@ This implementation requires manually copying the files included here into an ex
 MIDAS/FF_HEDM/v7/
 ```
 
-NOTE: In near future, SR workflow will be automatically with MIDAS github installation.
+NOTE: In near future, SR workflow will be included automatically with MIDAS github installation.
 
 The data to be copied is as below:
 
