@@ -824,19 +824,17 @@ tf = time.time()
 t_run += tf - ts
 SRlogger.info(f"{'-'*5} Time to extract parameters: {tf - ts:.5f} s | SR_run_time: {t_run:.5f} s")
 
+SRlogger.info(f"Calculating diffraction ring radii for {sr_params['ringsToUse']} rings")
+ts = time.time()
 
 """ Instead of compute_diffraction_rings, read the hkls.csv file and get the ring radii
 # The 'compute_diffraction_rings' function is limited only to cubic systems.
 
-SRlogger.info(f"Calculating diffraction ring radii for {sr_params['ringsToUse']} rings")
-ts = time.time()
 rings_Rpx = compute_diffraction_rings(sr_params["spacegroup"], sr_params["lattParam"][0],
                                       sr_params["xrayLambda"], sr_params["Lsd"],
                                       max_index=5) / sr_params["pxSize"]
 """
 
-SRlogger.info(f"Reading ring positions from '{args.midasZarrDir}hkls.csv'")
-ts = time.time()
 df_hkls = read_hkls_csv(f"{args.midasZarrDir}hkls.csv")
 rings_Rpx = (df_hkls["Radius"].unique() / sr_params["pxSize"]).tolist()
 
@@ -1109,6 +1107,7 @@ for frame_i in framesIdx:
         t_run += tf - ts
         SRlogger.info(f"{'-'*5} Time to predict SRx8 patches: {tf - ts:.5f} s | frame_time: {tf - t0_frame:.5f} s | SR_run_time: {t_run:.5f} s")
 
+    ts = time.time()
     # Based on srfac value, decide which patches will be used for peak analysis
     if args.srfac==2:
         patches_to_fit = SRx2_pred
@@ -1119,6 +1118,9 @@ for frame_i in framesIdx:
     if args.srfac==8:
         patches_to_fit = SRx8_pred
         SRlogger.info(f"\t| Using SRx8 predicted patches for peak analysis")
+    tf = time.time()
+    t_run += tf - ts
+    SRlogger.info(f"{'-'*5} Time to decide which patches will be used for peak analysis: {tf - ts:.5f} s | frame_time: {tf - t0_frame:.5f} s | SR_run_time: {t_run:.5f} s")
 
 
     ts = time.time()

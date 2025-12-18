@@ -6,6 +6,10 @@ hkls.csv
 test.ipynb
 .DS_Store
 ps_ss_290_sr.txt
+test_data/
+j_debug_SR_workflow.ipynb
+temp_midas_dir/
+
 # C extensions
 *.so
 
