@@ -11,9 +11,9 @@ Start a terminal within the MIDAS directory (it is critical to work within the M
 
 Run the 'super_res_install.py' file from here as shown below:
 
-'''bash
+```bash
 python ../../super_res_install.py
-'''
+```
 
 This will automatically install/update the super-resolution workflow.
 
