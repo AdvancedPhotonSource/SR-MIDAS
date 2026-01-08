@@ -10,6 +10,7 @@ test_data/
 j_debug_SR_workflow.ipynb
 temp_midas_dir/
 debug_super_res_process.py
+SR-MIDAS/
 
 # C extensions
 *.so
