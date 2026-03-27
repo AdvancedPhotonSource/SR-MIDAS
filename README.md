@@ -82,7 +82,7 @@ NOTE: This requires modification of ff_MIDAS.py file and should be carried out v
 
 Add following additional arguments to argument paser in ff_MIDAS.py:
 
-```
+```Python
     # Adding additional arguments for SR-MIDAS workflow --------------------------
 
     parser.add_argument("-runSR", type=int, required=False, default=0, 
@@ -107,7 +107,7 @@ Add following additional arguments to argument paser in ff_MIDAS.py:
 
 Create following additional variables from arguments:
 
-```
+```Python
     # Additional variables for SR-MIDAS workflow --------------------------
     runSR = args.runSR
     srfac = args.srfac
@@ -120,7 +120,7 @@ Create following additional variables from arguments:
 
 For both the batch mode and standard mode, when calling process_layer(....) function, pass following additional variables:
 
-```
+```Python
     try:
         process_layer(...,
             runSR=runSR,
@@ -131,9 +131,9 @@ For both the batch mode and standard mode, when calling process_layer(....) func
         )
 ```
 
-The last step is to modify the process_layer() function itself to create a route for super-resolution workflow. Modify the function definition to include the additional variables:
+The last step is to modify the process_layer() function itself to create a route for super-resolution workflow. First, modify the function definition to include the additional variables and then modify the peak search section to include an additional pathway:
 
-```
+```Python
 def process_layer(.....,
                   runSR: int, srfac: int, SRconfig_path: str, saveSRpatches: int, saveFrameGoodCoords: int,
                   grains_file: str = '') -> None:
