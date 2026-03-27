@@ -13,13 +13,13 @@ SR-MIDAS trains and applies convolutional neural networks to enhance the spatial
 - [Add SR-MIDAS to MIDAS `ff_MIDAS.py`](#adding-sr-midas-worflow-to-midas-ff-hedm-workflow)
 - [Running MIDAS `ff_MIDAS.py` with super-resolution enabled](#running-midas-ff-hedm-analysis-with-super-resolution-workflow-enabled)
 - [Command-Line Interface](#command-line-interface)
-  - [Create Peakbank](#1-create-peakbank)
-  - [Create Patchstore](#2-create-patchstore)
-  - [Train a Model](#3-train-a-model)
-  - [Hyperparameter Optimization](#4-hyperparameter-optimization)
-  - [Predict on a Patchstore](#5-predict-on-a-patchstore)
-  - [Create Predicted Patchstore](#6-create-predicted-patchstore)
-  - [Run SR Processing on MIDAS Data](#7-run-sr-processing-on-midas-data)
+  - [Run SR Processing on MIDAS Data](#1-run-sr-processing-on-midas-data)
+  - [Create Peakbank](#2-create-peakbank)
+  - [Create Patchstore](#3-create-patchstore)
+  - [Train a Model](#4-train-a-model)
+  - [Hyperparameter Optimization](#5-hyperparameter-optimization)
+  - [Predict on a Patchstore](#6-predict-on-a-patchstore)
+  - [Create Predicted Patchstore](#7-create-predicted-patchstore)
 - [Python API](#python-api)
 - [Pretrained Models](#pretrained-models)
 - [SR Config File](#sr-config-file)
@@ -209,7 +209,38 @@ Note: Enable 'saveSRpatches' and 'saveFrameGoodCoords' only if you want to debug
 
 ## Command-Line Interface
 
-### 1. Create Peakbank
+### 1. Run SR Processing on MIDAS Data
+
+Applies the full super-resolution pipeline to a MIDAS experiment directory. Reads detector frames from the `.MIDAS.zip` file, detects diffraction spots, applies cascaded SR, fits peak positions, and writes per-frame peak CSV files back to the MIDAS `Temp/` directory.
+
+```bash
+sr-midas-process -midasZarrDir /path/to/analysis_dir/
+```
+
+With a custom SR config pointing to your own trained models:
+
+```bash
+sr-midas-process \
+    -midasZarrDir /path/to/analysis_dir/ \
+    -srfac 8 \
+    -SRconfig /path/to/sr_config.json
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `-midasZarrDir` | required | Directory containing the `.MIDAS.zip` zarr file |
+| `-srfac` | `8` | Super-resolution factor: `2`, `4`, or `8` |
+| `-SRconfig` | bundled `cnnsr_sr_config.json` | Path to SR config `.json` or `.txt` file |
+| `-saveSRpatches` | `1` | Save SR patch arrays to disk (`1`=yes, `0`=no) |
+| `-saveFrameGoodCoords` | `1` | Save per-frame coordinate maps (`1`=yes, `0`=no) |
+
+When `-SRconfig` is not provided, the bundled `cnnsr_sr_config.json` is used automatically, which points to the pretrained cascaded models included in the package.
+
+**Output:** Per-frame peak CSV files written to `{midasZarrDir}/Temp/`, in the same format as standard MIDAS `*_PS.csv` files. A copy of the resolved SR config is saved to `{midasZarrDir}/SR_out/sr_config.json`.
+
+---
+
+### 2. Create Peakbank
 
 Extracts MIDAS-fitted peaks from one or more analysis directories into a filtered CSV (the *peakbank*).
 
@@ -253,7 +284,7 @@ The JSON config file specifies all parameters:
 
 ---
 
-### 2. Create Patchstore
+### 3. Create Patchstore
 
 Synthesizes a set of multi-resolution patch pairs (at x1, x2, x4, x8) from the peakbank for training and evaluation.
 
@@ -288,7 +319,7 @@ patchstore.h5
 
 ---
 
-### 3. Train a Model
+### 4. Train a Model
 
 Trains a CNNSR model to predict high-resolution patches from low-resolution inputs.
 
@@ -356,7 +387,7 @@ sr-midas-train cnnsr -expName x4_x8 -pst patchstore.h5 \
 
 ---
 
-### 4. Hyperparameter Optimization
+### 5. Hyperparameter Optimization
 
 Searches for optimal CNNSR architecture and training hyperparameters using Optuna.
 
@@ -387,7 +418,7 @@ sr-midas-hp-optimize cnnsr \
 
 ---
 
-### 5. Predict on a Patchstore
+### 6. Predict on a Patchstore
 
 Runs a trained model on patches in a patchstore and saves predictions as `.npy` files. Useful for evaluating model accuracy against known ground-truth patches.
 
@@ -433,7 +464,7 @@ sr-midas-predict cnnsr \
 
 ---
 
-### 6. Create Predicted Patchstore
+### 7. Create Predicted Patchstore
 
 Runs a trained model on an existing patchstore and saves the predictions as a new HDF5 patchstore. Useful for cascaded training workflows where the next-stage model trains on predicted (rather than ground-truth) inputs.
 
@@ -448,37 +479,6 @@ sr-midas-create-pred-pst \
     -srfacOut 2 \
     -bsz 500
 ```
-
----
-
-### 7. Run SR Processing on MIDAS Data
-
-Applies the full super-resolution pipeline to a MIDAS experiment directory. Reads detector frames from the `.MIDAS.zip` file, detects diffraction spots, applies cascaded SR, fits peak positions, and writes per-frame peak CSV files back to the MIDAS `Temp/` directory.
-
-```bash
-sr-midas-process -midasZarrDir /path/to/analysis_dir/
-```
-
-With a custom SR config pointing to your own trained models:
-
-```bash
-sr-midas-process \
-    -midasZarrDir /path/to/analysis_dir/ \
-    -srfac 8 \
-    -SRconfig /path/to/sr_config.json
-```
-
-| Argument | Default | Description |
-|---|---|---|
-| `-midasZarrDir` | required | Directory containing the `.MIDAS.zip` zarr file |
-| `-srfac` | `8` | Super-resolution factor: `2`, `4`, or `8` |
-| `-SRconfig` | bundled `cnnsr_sr_config.json` | Path to SR config `.json` or `.txt` file |
-| `-saveSRpatches` | `1` | Save SR patch arrays to disk (`1`=yes, `0`=no) |
-| `-saveFrameGoodCoords` | `1` | Save per-frame coordinate maps (`1`=yes, `0`=no) |
-
-When `-SRconfig` is not provided, the bundled `cnnsr_sr_config.json` is used automatically, which points to the pretrained cascaded models included in the package.
-
-**Output:** Per-frame peak CSV files written to `{midasZarrDir}/Temp/`, in the same format as standard MIDAS `*_PS.csv` files. A copy of the resolved SR config is saved to `{midasZarrDir}/SR_out/sr_config.json`.
 
 ---
 
