@@ -10,6 +10,8 @@ SR-MIDAS trains and applies convolutional neural networks to enhance the spatial
 
 - [Installation](#installation)
 - [Workflow Overview](#workflow-overview)
+- [Add SR-MIDAS to MIDAS `ff_MIDAS.py`](#adding-sr-midas-worflow-to-midas-ff-hedm-workflow)
+- [Running MIDAS `ff_MIDAS.py` with super-resolution enabled](#running-midas-ff-hedm-analysis-with-super-resolution-workflow-enabled)
 - [Command-Line Interface](#command-line-interface)
   - [Create Peakbank](#1-create-peakbank)
   - [Create Patchstore](#2-create-patchstore)
