@@ -174,6 +174,34 @@ def process_layer(.....,
         # --------------------------
 ```
 
+## Running MIDAS FF-HEDM analysis with super-resolution workflow enabled
+
+If your MIDAS installation is compatible with running SR-MIDAS, the super-resolution workflow can be enabled by declaring two additional arguments in the command line for MIDAS FF-HEDM analysis.
+- doPeakSearch 0 : This disables the MIDAS peak fitting.
+- runSR 1 : This triggers the SR workflow and hands over the peak fitting task to SR-MIDAS pipeline 
+
+```bash
+python ../MIDAS/FF-HEDM/workflows/ff_MIDAS.py \
+-paramFN ps.txt \
+-nCPUs 50 \
+-resultFolder MidasRecon \
+-numFrameChunks 100 \
+-preProcThresh 60 \
+-dataFN ../data.h5 \
+-doPeakSearch 0 \
+-runSR 1 \
+```
+
+The above command will SR worflow with default in-built configuration in SR-MIDAS. You can pass optional arguments to control your SR workflow:
+
+| Key | Description | Default | Options
+|---|---|
+| `-srfac` | super-resolution factor | 8 | {2, 4, 8} |
+| `-SRconfig_path` | Path to .json configuration file for super-resolution workflow | "auto" | Full path to .json SR configuration file |
+| `-saveSRpatches` | Controls if predicted SR patches are saved (if =1) | 0 | {0, 1} |
+| `-saveFrameGoodCoords` | Controls if GoodCoords map is saved for each frame (if =1) | 0 | {0, 1} |
+
+Note: Enable 'saveSRpatches' and 'saveFrameGoodCoords' only if you want to debug the SR workflow since these will take significant disk space.
 
 ## Command-Line Interface
 
