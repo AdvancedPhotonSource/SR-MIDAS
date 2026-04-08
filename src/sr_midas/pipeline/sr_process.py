@@ -34,6 +34,7 @@ from sr_midas.models.cnnsr import load_trained_CNNSR
 from sr_midas.pipeline._patch_ops import (patches_from_detector_frame,
                                            weighted_center_of_mass, com_peak_coords,
                                            watershed_peaks, multi_pv_fit)
+from sr_midas.pipeline._consolidated_io import write_allpeaks_ps_bin, write_allpeaks_px_bin
 
 SEP = os.sep
 
@@ -265,13 +266,21 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
 
     col_names = ["SpotID", "IntegratedIntensity", "Omega(degrees)", "YCen(px)", "ZCen(px)", "IMax",
                  "Radius(px)", "Eta(degrees)", "SigmaR", "SigmaEta", "NrPixels",
-                 "TotalNrPixelsInPeakRegion", "nPeaks", "maxY", "maxZ", "diffY", "diffZ"]
+                 "TotalNrPixelsInPeakRegion", "nPeaks", "maxY", "maxZ", "diffY", "diffZ",
+                 "rawIMax", "returnCode", "retVal", "BG",
+                 "SigmaGR", "SigmaLR", "SigmaGEta", "SigmaLEta",
+                 "MU", "RawSumIntensity", "maskTouched", "FitRMSE"]
 
     nr_frames = exData.shape[0]
 
     shiftYpx = sr_config["shift_YZ_pos"][f"SRx{srfac}"]["shiftYpx"]
     shiftZpx = sr_config["shift_YZ_pos"][f"SRx{srfac}"]["shiftZpx"]
     SRlogger.info(f"\t|shiftYpx: {shiftYpx}, shiftZpx: {shiftZpx}")
+
+    # Accumulators for consolidated binary output
+    all_frame_peak_data = [None] * nr_frames   # for AllPeaks_PS.bin
+    all_frame_pixel_data = [None] * nr_frames  # for AllPeaks_PX.bin
+    nr_pixels_detector = max(sr_params["numPxY"], sr_params["numPxZ"])
 
     for frame_i in range(0, nr_frames):
         t0_frame = time.time()
@@ -282,8 +291,16 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
         frame_i_csv_savepath = f"{peaks_csv_dir}{frame_i_csv_savename}"
 
         df_peaks_frame_i = pd.DataFrame(columns=col_names)
+        frame_pixels = []
 
         if sr_config["skipFitIfExists"].lower() in ["yes", "y", "true", "t", "1"] and os.path.isfile(frame_i_csv_savepath):
+            # Read existing CSV to populate binary accumulator
+            try:
+                existing_df = pd.read_csv(frame_i_csv_savepath, sep="\t")
+                if len(existing_df) > 0 and len(existing_df.columns) == 29:
+                    all_frame_peak_data[frame_i] = existing_df.values.astype(np.float64)
+            except Exception:
+                pass
             SRlogger.info(f"{'*'*5}| Frame {frame_i} skipped (csv exists).")
             continue
 
@@ -464,11 +481,21 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
             df_rows, n_peaks_in_patches_list, spotID = gpu_fit_frame_patches(
                 patches_to_fit, patches_Y00, patches_Z00,
                 patches_exp, nr_pixels_in_patch,
+                patches_Isum,
                 sr_params, sr_config, srfac,
                 omega, shiftYpx, shiftZpx,
                 torch_devs)
             for row in df_rows:
                 df_peaks_frame_i.loc[len(df_peaks_frame_i)] = row
+
+            # Collect per-peak pixel coordinates for binary output
+            for patch_i in range(len(patches_to_fit)):
+                nz = np.nonzero(patches_exp[patch_i, 0])
+                pixel_y = (patches_Z00[patch_i] + nz[0]).astype(np.int16)
+                pixel_z = (patches_Y00[patch_i] + nz[1]).astype(np.int16)
+                n_pk = n_peaks_in_patches_list[patch_i] if patch_i < len(n_peaks_in_patches_list) else 0
+                for _ in range(n_pk):
+                    frame_pixels.append((pixel_y, pixel_z))
 
         else:
             # ── CPU path: original per-patch fitting (COM or PV based on config) ──
@@ -535,16 +562,28 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
                         diffY = maxY - YCen_px
                         diffZ = maxZ - ZCen_px
 
+                        rawIMax = float(np.max(patches_exp[patch_i, 0]))
+                        RawSumIntensity = float(patches_Isum[patch_i])
+
                         peak_data = [spotID, IntegratedIntensity, omega, YCen_px, ZCen_px, IMax, R, Eta,
                                      SigmaR, SigmaEta, NrPixels, TotalNrPixelsInPeakRegion,
-                                     n_peaks_in_patch, maxY, maxZ, diffY, diffZ]
+                                     n_peaks_in_patch, maxY, maxZ, diffY, diffZ,
+                                     rawIMax, 0.0, 0.0, 0.0,
+                                     1.0, 0.0, 1.0, 0.0,
+                                     0.0, RawSumIntensity, 0.0, 0.0]
                         df_peaks_frame_i.loc[spotID - 1] = peak_data
+
+                        # Collect pixel coords for binary output
+                        nz = np.nonzero(patches_exp[patch_i, 0])
+                        pixel_y = (Z00 + nz[0]).astype(np.int16)
+                        pixel_z = (Y00 + nz[1]).astype(np.int16)
+                        frame_pixels.append((pixel_y, pixel_z))
 
                 if (str(sr_config["fitPeakShapePV"]).lower() in ["yes", "y", "true", "t", "1"]) or \
                    (str(sr_config["fitPeakShapePV"]).lower() in ["auto", "partial", "mix"] and n_peaks_in_patch >= 2):
 
                     try:
-                        pvfit_peaks, _, _ = multi_pv_fit(patch, patches_Y00[patch_i], patches_Z00[patch_i],
+                        pvfit_peaks, _, fit_patch = multi_pv_fit(patch, patches_Y00[patch_i], patches_Z00[patch_i],
                                                           sr_params["Ypx_BC"], sr_params["Zpx_BC"],
                                                           sr_config["lrsz"], srfac,
                                                           min_distance=sr_config["peak_find_args"]["min_d"][f"SRx{srfac}"],
@@ -596,10 +635,25 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
 
                             diffY = maxY - YCen_px
                             diffZ = maxZ - ZCen_px
+
+                            rawIMax = float(np.max(patches_exp[patch_i, 0]))
+                            fit_rmse = float(np.sqrt(np.mean((fit_patch - patch) ** 2)))
+                            RawSumIntensity = float(patches_Isum[patch_i])
+
                             peak_data = [spotID, IntegratedIntensity, omega, YCen_px, ZCen_px, IMax, R, Eta,
                                          SigmaR, SigmaEta, NrPixels, TotalNrPixelsInPeakRegion,
-                                         n_peaks_in_patch, maxY, maxZ, diffY, diffZ]
+                                         n_peaks_in_patch, maxY, maxZ, diffY, diffZ,
+                                         rawIMax, 0.0, fit_rmse, 0.0,
+                                         float(peak_prop["SigGR"]), float(peak_prop["SigLR"]),
+                                         float(peak_prop["SigGEta"]), float(peak_prop["SigLEta"]),
+                                         float(peak_prop["LGmix"]), RawSumIntensity, 0.0, fit_rmse]
                             df_peaks_frame_i.loc[spotID - 1] = peak_data
+
+                            # Collect pixel coords for binary output
+                            nz = np.nonzero(patches_exp[patch_i, 0])
+                            pixel_y = (Z00 + nz[0]).astype(np.int16)
+                            pixel_z = (Y00 + nz[1]).astype(np.int16)
+                            frame_pixels.append((pixel_y, pixel_z))
 
                     except Exception as e:
                         SRlogger.warning(f"\tFrame {frame_i}: Patch {patch_i} skipped (pvfit failed: {e})")
@@ -610,6 +664,11 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
         SRlogger.info(f"{'-'*5} Time to fit peaks [{fit_method}] (frame {frame_i}): {tf - ts:.5f} s | SR_run_time: {t_run:.5f} s")
 
         df_peaks_frame_i.to_csv(frame_i_csv_savepath, sep="\t", index=False)
+
+        # Accumulate for consolidated binary output
+        if len(df_peaks_frame_i) > 0:
+            all_frame_peak_data[frame_i] = df_peaks_frame_i.values.astype(np.float64)
+            all_frame_pixel_data[frame_i] = frame_pixels
 
         if saveSRpatches == 1:
             patches_info_fp = f"{SR_patch_save_dirpath}{str(frame_i).zfill(sr_params['padding'])}_patches_info.csv"
@@ -622,6 +681,23 @@ def run_sr_process(midasZarrDir, srfac=8, SRconfig_path=None,
             })
             patches_info_df.to_csv(patches_info_fp)
             SRlogger.info(f"\t| Saved patches info: {patches_info_fp}")
+
+    # ── Write consolidated binary files ──────────────────────────────────────
+    ts = time.time()
+    SRlogger.info(f"{'='*60}")
+    SRlogger.info(f"Writing consolidated binary files to {peaks_csv_dir}")
+
+    ps_bin_path = os.path.join(peaks_csv_dir, "AllPeaks_PS.bin")
+    write_allpeaks_ps_bin(ps_bin_path, nr_frames, all_frame_peak_data)
+    SRlogger.info(f"\t| Wrote {ps_bin_path}")
+
+    px_bin_path = os.path.join(peaks_csv_dir, "AllPeaks_PX.bin")
+    write_allpeaks_px_bin(px_bin_path, nr_frames, nr_pixels_detector, all_frame_pixel_data)
+    SRlogger.info(f"\t| Wrote {px_bin_path}")
+
+    tf = time.time()
+    t_run += tf - ts
+    SRlogger.info(f"{'-'*5} Time to write consolidated binary files: {tf - ts:.5f} s | SR_run_time: {t_run:.5f} s")
 
 
 if __name__ == "__main__":

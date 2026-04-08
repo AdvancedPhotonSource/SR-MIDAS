@@ -254,6 +254,7 @@ def detect_peaks_and_init(patches, grid_RR, grid_EE, srfac,
 
 def gpu_fit_frame_patches(patches_to_fit, patches_Y00, patches_Z00,
                           patches_exp, nr_pixels_in_patch,
+                          patches_Isum,
                           sr_params, sr_config, srfac,
                           omega, shiftYpx, shiftZpx,
                           torch_devs, n_steps=20, lr=0.15,
@@ -269,6 +270,7 @@ def gpu_fit_frame_patches(patches_to_fit, patches_Y00, patches_Z00,
         patches_Y00, patches_Z00: lists of patch origins
         patches_exp: (N, 1, H_native, W_native) native-res patches
         nr_pixels_in_patch: list of non-zero pixel counts
+        patches_Isum: list of float, raw sum intensity per patch
         sr_params: dict with Ypx_BC, Zpx_BC, etc.
         sr_config: dict with lrsz, peak_find_args, etc.
         srfac: super-resolution factor
@@ -280,7 +282,7 @@ def gpu_fit_frame_patches(patches_to_fit, patches_Y00, patches_Z00,
         use_compile: use torch.compile
 
     Returns:
-        df_rows: list of [spotID, IntegInt, omega, Y, Z, IMax, R, Eta, ...] rows
+        df_rows: list of 29-element rows matching MIDAS column format
         n_peaks_list: list of peak counts per patch
         spotID: final spot counter value
     """
@@ -325,6 +327,7 @@ def gpu_fit_frame_patches(patches_to_fit, patches_Y00, patches_Z00,
     n_peaks_np = n_peaks_detected.cpu().numpy()
     grid_RR_np = grid_RR.cpu().numpy()
     grid_EE_np = grid_EE.cpu().numpy()
+    costs_np = costs.detach().cpu().numpy()  # per-patch MSE
 
     df_rows = []
     n_peaks_list = []
@@ -375,10 +378,19 @@ def gpu_fit_frame_patches(patches_to_fit, patches_Y00, patches_Z00,
             NrPixels = int(np.count_nonzero(pSRx1 * patches_exp[patch_i]))
             TotalNrPixels = nr_pixels_in_patch[patch_i]
 
+            # Additional MIDAS columns (17-28)
+            rawIMax = float(np.max(patches_exp[patch_i, 0]))
+            returnCode = 0.0
+            fit_rmse = float(np.sqrt(costs_np[patch_i]))
+            RawSumIntensity = float(patches_Isum[patch_i])
+
             df_rows.append([spotID, IntegratedIntensity, omega, YCen_px, ZCen_px,
                            IMax_out, R, Eta_val, SigmaR, SigmaEta, NrPixels,
                            TotalNrPixels, n_pk, maxY, maxZ,
-                           maxY - YCen_px, maxZ - ZCen_px])
+                           maxY - YCen_px, maxZ - ZCen_px,
+                           rawIMax, returnCode, fit_rmse, 0.0,
+                           SigGR, SigLR, SigGEta, SigLEta,
+                           LGmix_val, RawSumIntensity, 0.0, fit_rmse])
 
     return df_rows, n_peaks_list, spotID
 
